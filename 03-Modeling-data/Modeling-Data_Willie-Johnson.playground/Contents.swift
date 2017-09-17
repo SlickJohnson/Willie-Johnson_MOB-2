@@ -16,7 +16,6 @@ struct Listing {
 }
 
 extension Listing: Decodable {
-    
     enum SearchResultKeys: String, CodingKey
     {
         case listing
@@ -37,7 +36,6 @@ extension Listing: Decodable {
         let listingContainer = try searchResultsContainer.nestedContainer(keyedBy: ListingKeys.self, forKey: .listing)
         
         let bathrooms = try listingContainer.decode(Double.self, forKey: .bathrooms)
-        print(bathrooms)
         let bedrooms = try listingContainer.decode(Int.self, forKey: .bedrooms)
         let beds = try listingContainer.decode(Int.self, forKey: .beds)
         let city = try listingContainer.decode(String.self, forKey: .city)
@@ -50,41 +48,48 @@ struct ListingList: Decodable {
     let search_results: [Listing]
 }
 
-typealias JSON = [String: Any]
+enum Result<T> {
+    case success(T)
+    case failure(Error)
+}
 
-enum NetworkError: Error {
-    case unknown
-    case couldNotParseJSON
+enum ListingError: Error {
+    case couldNotParse
+    case noData
 }
 
 class Networking {
-    let session = URLSession.shared
-    let url = URL(string: "https://api.airbnb.com/v2/search_results?key=915pw2pnf4h1aiguhph5gc5b2")!
+    func fetchListingResult(completion: @escaping (Result<[Listing]>) -> Void) {
+        let session = URLSession.shared
     
-    func getListing(id: String, completion: @escaping ([Listing]) -> Void) {
+        let url = URL(string: "https://api.airbnb.com/v2/search_results?key=915pw2pnf4h1aiguhph5gc5b2")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         
-        session.dataTask(with: request) { (data, response, error) in
+        session.dataTask(with: request) { (data, response, error) -> Void in
             
-            if let data = data {
-                do {
-                    let listingList = try? JSONDecoder().decode(ListingList.self, from: data)
-                    
-                    guard let listings = listingList?.search_results else {return}
-        
-                    completion(listings)
-                } catch {
-                    print(error)
-                }
+            if let error = error {
+                return completion(Result.failure(error))
             }
+            
+            guard let data = data else {
+                return completion(Result.failure(ListingError.noData))
+            }
+        
+            guard let listingList = try? JSONDecoder().decode(ListingList.self, from: data) else {
+                return completion(Result.failure(ListingError.couldNotParse))
+            }
+            
+            completion(Result.success(listingList.search_results))
         }.resume()
     }
 }
 
 let networking = Networking()
-networking.getListing(id: "1", completion: {(res) in print(res)})
+networking.fetchListingResult { (listing) in
+    print(listing)
+}
 
 PlaygroundSupport.PlaygroundPage.current.needsIndefiniteExecution = true
 
